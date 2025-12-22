@@ -90,6 +90,27 @@ for col, default in {
     if col not in df.columns:
         df[col] = default
 
+# ---- BLOG DETECTION ----
+def is_blog_article(row):
+    url = str(row.get("url", "")).lower()
+    source = str(row.get("source", "")).lower()
+    author = str(row.get("author", "")).lower()
+
+    blog_indicators = ["/blog", "/insights", "/resources", "/articles"]
+
+    if any(b in url for b in blog_indicators):
+        return True
+
+    if author and source and author in source:
+        return True
+
+    return False
+
+df["content_type"] = df.apply(
+    lambda r: "Blog" if is_blog_article(r) else "News",
+    axis=1
+)
+
 # ---- FILTER ----
 show_only_flagged = st.checkbox("Show only articles with authorship concerns")
 
@@ -102,9 +123,9 @@ df["Authorship Status"] = df.apply(
     axis=1
 )
 
-# ---- INCLUDE COLUMN ----
-if "Include" not in df.columns:
-    df.insert(0, "Include", False)
+# ---- SPLIT NEWS & BLOGS ----
+news_df = df[df["content_type"] == "News"].copy()
+blog_df = df[df["content_type"] == "Blog"].copy()
 
 # ---- BULK ACTION ----
 st.markdown("### Bulk Actions")
@@ -118,19 +139,63 @@ def highlight_flagged(row):
         return ["background-color: #fff3cd"] * len(row)
     return [""] * len(row)
 
-styled_df = df.style.apply(highlight_flagged, axis=1)
+# =======================
+# 📰 NEWS ARTICLES TABLE
+# =======================
+st.subheader("📰 News Articles")
 
-edited_df = st.data_editor(
-    styled_df.data,
-    use_container_width=True,
-    hide_index=True
+if news_df.empty:
+    st.info("No news articles found.")
+    selected_news = pd.DataFrame()
+else:
+    if "Include" not in news_df.columns:
+        news_df.insert(0, "Include", False)
+
+    styled_news = news_df.style.apply(highlight_flagged, axis=1)
+
+    edited_news = st.data_editor(
+        styled_news.data,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    selected_news = edited_news[edited_news["Include"]].drop(columns=["Include"])
+
+# =======================
+# 📝 BLOG ARTICLES TABLE
+# =======================
+st.subheader("📝 Blogs / Owned Content")
+st.caption("Blogs are shown separately and can be included only if required.")
+
+if blog_df.empty:
+    st.info("No blog articles detected.")
+    selected_blogs = pd.DataFrame()
+else:
+    if "Include" not in blog_df.columns:
+        blog_df.insert(0, "Include", False)
+
+    styled_blogs = blog_df.style.apply(highlight_flagged, axis=1)
+
+    edited_blogs = st.data_editor(
+        styled_blogs.data,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    selected_blogs = edited_blogs[edited_blogs["Include"]].drop(columns=["Include"])
+
+# ---- COMBINE SELECTIONS ----
+selected_articles = pd.concat(
+    [selected_news, selected_blogs],
+    ignore_index=True
 )
 
-# ---- STORE SELECTION ----
-selected_articles = edited_df[edited_df["Include"]].drop(columns=["Include"])
 st.session_state["selected_articles"] = selected_articles.to_dict("records")
 
-st.success(f"Selected {len(selected_articles)} articles for report.")
+st.success(
+    f"Selected {len(selected_news)} news articles "
+    f"and {len(selected_blogs)} blogs for report."
+)
 
 # ---- REPORT ----
 st.markdown("---")
