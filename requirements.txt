@@ -4,3 +4,4 @@ requests
 pytz
 pandas
 python-docx
+altair
