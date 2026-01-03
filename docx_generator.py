@@ -1,5 +1,31 @@
 from docx import Document
 from docx.shared import Inches
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+def add_hyperlink(paragraph, text, url):
+    if not url:
+        paragraph.add_run(text)
+        return
+    part = paragraph.part
+    r_id = part.relate_to(
+        url,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+
+    new_run = OxmlElement("w:r")
+    rPr = OxmlElement("w:rPr")
+    new_run.append(rPr)
+
+    text_elem = OxmlElement("w:t")
+    text_elem.text = text
+    new_run.append(text_elem)
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
 
 
 def generate_docx(
@@ -38,22 +64,28 @@ def generate_docx(
     doc.add_paragraph("")
 
     # ---- TABLE ----
-    table = doc.add_table(rows=1, cols=6)
+    table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
 
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = "Date"
-    hdr_cells[1].text = "Title"
-    hdr_cells[2].text = "Source"
-    hdr_cells[3].text = "Author"
-    hdr_cells[4].text = "Authorship Status"
-    hdr_cells[5].text = "URL"
+    hdr = table.rows[0].cells
+    hdr[0].text = "Date"
+    hdr[1].text = "Article"
+    hdr[2].text = "Source"
+    hdr[3].text = "Author"
+    hdr[4].text = "Authorship Status"
 
     for a in articles:
         row = table.add_row().cells
 
         row[0].text = a.get("date", "")
-        row[1].text = a.get("title", "")
+
+        p = row[1].paragraphs[0]
+        add_hyperlink(
+            p,
+            a.get("title", ""),
+            a.get("url", "")
+        )
+
         row[2].text = a.get("source", "")
         row[3].text = a.get("author", "") or "—"
 
@@ -62,6 +94,5 @@ def generate_docx(
             status += " (Manually flagged)"
 
         row[4].text = status
-        row[5].text = a.get("url", "")
 
     doc.save(out_path)
